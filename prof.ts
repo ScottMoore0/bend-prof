@@ -32,18 +32,25 @@ order.forEach((k, i) => last.set(k, i));
 const first = new Map<string, number>();
 order.forEach((k, i) => { if (!first.has(k)) first.set(k, i); });
 
+// book_valid hides the bodies of the defs in the order it is given, until
+// their last entry. The order is cut at each step, so hide every body up
+// front, as the full check does, or a later def's body would be visible
+// early (a forward reference would check). A law's statement keeps its body
+// hidden, so its proof is checked (and timed) once, at its fill
+const orig = { ...book.tlds };
+for (const k of order) {
+  const t = orig[k];
+  book.tlds[k] = t.$ === "Def" ? { ...t, v: null } : t;
+}
 const ms: number[] = [];
 let failed = "";
 for (let i = 0; i < order.length; i++) {
   book.order = order.slice(0, i + 1);
-  // a law's statement comes before its proof: hide the body there, as the
-  // whole order does, so the proof is checked (and timed) once, at its fill
   const k = order[i];
-  const def = book.tlds[k];
-  const early = last.get(k)! > i && def?.$ === "Def" && def.v !== null;
-  if (early) {
-    book.tlds[k] = { ...def, v: null };
-  }
+  const def = orig[k];
+  const early = last.get(k)! > i && def.$ === "Def";
+  book.tlds[k] = early ? { ...def, v: null } : def;
+  const h = book.hols;
   const t = performance.now();
   try {
     B.book_valid(book, i);
@@ -55,9 +62,11 @@ for (let i = 0; i < order.length; i++) {
   }
   ms.push(performance.now() - t);
   if (early) {
-    book.tlds[k] = def;
-    book.hols -= 1;
+    book.hols = h;
   }
+}
+if (!failed && book.hols > 0) {
+  failed = String(book.hols) + " TODO" + (book.hols === 1 ? "" : "s") + " found";
 }
 const total = ms.reduce((a, b) => a + b, 0);
 
